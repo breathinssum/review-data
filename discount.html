@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>엑셀 할인 계산기</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- SheetJS -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- flatpickr -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
+  <style>
+    :root { --bg:#0b0c10; --panel:#111319; --line:#1f2833; --text:#e6e6e6; }
+    body{margin:0;font-family:Pretendard,system-ui,sans-serif;background:var(--bg);color:var(--text)}
+    header{padding:14px 18px;border-bottom:1px solid var(--line)}
+    h1{margin:0;font-size:18px}
+    main{max-width:1100px;margin:24px auto;padding:0 16px 80px}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:16px;margin-bottom:16px; width: 100%;}
+    label{display:block;font-size:12px;color:#b9c2cf;margin:0 0 6px}
+    input[type="file"],input[type="text"],input[type="number"]{width:80%;background:#0e1016;border:1px solid var(--line);color:var(--text);padding:10px 12px;border-radius:10px}
+    button{background:#2a6df4;color:#fff;border:none;padding:12px 14px;border-radius:12px;cursor:pointer;font-weight:600}
+    button.secondary{background:#2f3645}
+    table{width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+    th,td{padding:8px 10px;border-bottom:1px solid var(--line);font-size:14px}
+    th{background:#0f1320;color:#c7d2e1}
+    td.right{text-align:right}
+    .muted{font-size:12px;color:#9aa6b2}
+    .pill{padding:2px 8px;border:1px solid var(--line);border-radius:999px;font-size:12px}
+    .error{color:#ff9c9c;font-size:13px}
+    .ok{color:#9cffc3;font-size:13px}
+    .grid>div {display: flex; justify-content: space-between;}
+    .col-6,.col-4,.col-3{min-width: 45%;}
+  </style>
+</head>
+<body>
+<header>
+  <h1>엑셀 할인 계산기</h1>
+  <a href="index.html" style="color:var(--accent);text-decoration:none;font-size:14px;">단어 추출 사이트로 가기</a><br>
+  <a href="image-review-viewer.html" style="color:var(--accent);text-decoration:none;font-size:14px;">이미지 뷰어 사이트로 가기</a>
+</header>
+<main>
+  <section class="card">
+      <div class="grid">
+        <div>
+          <div class="col-6">
+            <label>엑셀 파일 업로드 (A: 결제일시, B: 결제금액, C: 상품명)</label>
+            <input id="file" type="file" accept=".xlsx,.xls,.csv" />
+          </div>
+          <div class="col-6">
+            <label>결제 일시 범위</label>
+            <input id="rangeDT" type="text" placeholder="기간을 선택하세요" />
+          </div>
+      </div>
+      <div>
+        <div class="col-3">
+          <label>최소 결제금액 (원)</label>
+          <input id="minAmount" type="number" step="0.01" min="0" placeholder="예: 10000" />
+        </div>
+        <div class="col-3">
+          <label>제외할 제품명 (쉼표 구분)</label>
+          <input id="exclude" type="text" placeholder="예: 샘플, 사은품" />
+        </div>
+      </div>
+      <div>
+        <div class="col-3">
+          <label>할인율 (%)</label>
+          <input id="percent" type="number" step="0.01" min="0" placeholder="10" />
+        </div>
+        <div class="col-3">
+          <label>최대 할인금액 (원)</label>
+          <input id="maxDiscount" type="number" step="0.01" min="0" placeholder="5000" />
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+        <button id="run">계산하기</button>
+        <button id="download" class="secondary" disabled>CSV 다운로드</button>
+        <div id="status" style="margin-top:8px"></div>
+      </div>
+  </section>
+
+  <section class="card">
+    <p class="muted">결과</p>
+    <table id="resultTable">
+      <thead>
+        <tr><th>일자</th><th class="right">결제금액</th><th>상품명</th><th class="right">할인금액</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p id="summary" class="pill">행: 0, 합계: 0.00원, 할인합계: 0.00원</p>
+  </section>
+</main>
+
+<script>
+const fmt = new Intl.NumberFormat('ko-KR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const dd=n=>String(n).padStart(2,'0');
+const toDisplay=d=>`${d.getFullYear()}-${dd(d.getMonth()+1)}-${dd(d.getDate())} ${dd(d.getHours())}:${dd(d.getMinutes())}`;
+function excelSerialToDate(s){const utc_days=Math.floor(s-25569);const d=new Date(utc_days*86400*1000);const secs=Math.round(86400*(s-Math.floor(s)));d.setUTCSeconds(secs);return d;}
+function parseDate(v){if(v==null||v==="")return null;if(typeof v==="number")return excelSerialToDate(v);let s=String(v).trim().replace(/[./]/g,'-');if(/^\d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{2}/.test(s))s=s.replace(' ','T');const d=new Date(s);return isNaN(d)?null:d;}
+let parsedRows=[],filteredRows=[];
+const fp=flatpickr("#rangeDT",{locale:"ko",mode:"range",enableTime:true,time_24hr:true,dateFormat:"Y-m-d H:i",minuteIncrement:1});
+
+document.getElementById("file").addEventListener("change",async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+  parsedRows=[];
+  let startRow=0;
+  if(aoa.length && aoa[0] && (
+     /결제.?일|date|datetime|일시/i.test(aoa[0][0]||'') ||
+     /결제.?금액|amount|price/i.test(aoa[0][1]||'') ||
+     /상품.?명|product/i.test(aoa[0][2]||'')
+  )) startRow=1;
+  for(let i=startRow;i<aoa.length;i++){
+    const r=aoa[i]; if(!r||!r.length) continue;
+    const d=parseDate(r[0]); if(!d) continue;
+    const amt=parseFloat(r[1])||0;
+    const product=String(r[2]||'').trim();
+    if(product) parsedRows.push({dateObj:d,amount:amt,product,displayDate:toDisplay(d)});
+  }
+  document.getElementById("status").innerHTML=`<span class="ok">${parsedRows.length}건 불러옴</span>`;
+});
+
+function render(rows){
+  const tb=document.querySelector("#resultTable tbody");
+  tb.innerHTML="";
+  let sum=0,dsum=0;
+  rows.forEach(r=>{
+    sum+=r.amount; dsum+=r.discount;
+    tb.innerHTML+=`<tr>
+      <td>${r.displayDate}</td>
+      <td class="right">${fmt.format(r.amount)}</td>
+      <td>${r.product}</td>
+      <td class="right">${fmt.format(r.discount)}</td>
+    </tr>`;
+  });
+  document.getElementById("summary").textContent=`행: ${rows.length}, 합계: ${fmt.format(sum)}원, 할인합계: ${fmt.format(dsum)}원`;
+  document.getElementById("download").disabled=!rows.length;
+}
+
+document.getElementById("run").addEventListener("click",()=>{
+  if(!parsedRows.length){document.getElementById("status").innerHTML=`<span class="error">파일을 업로드하세요.</span>`;return;}
+  const sel=fp.selectedDates;if(!sel.length){document.getElementById("status").innerHTML=`<span class="error">기간을 선택하세요.</span>`;return;}
+  const s=new Date(sel[0]);const e=sel[1]?new Date(sel[1]):s;
+  const minAmount=parseFloat(document.getElementById("minAmount").value)||0;
+  const ex=(document.getElementById("exclude").value||"").split(",").map(v=>v.trim().toLowerCase()).filter(Boolean);
+  const pct=(parseFloat(document.getElementById("percent").value)||0)/100;
+  const max=parseFloat(document.getElementById("maxDiscount").value)||0;
+  let rows=parsedRows.filter(r=>r.dateObj>=s && r.dateObj<=e);
+  rows=rows.filter(r=>r.amount>minAmount);
+  rows=rows.filter(r=>!ex.some(x=>r.product.toLowerCase().includes(x)));
+  filteredRows=rows.map(r=>{
+    let d=r.amount*pct;
+    if(d>max) d=max;
+    return {...r,discount:d};
+  });
+  render(filteredRows);
+});
+
+document.getElementById("download").addEventListener("click",()=>{
+  if(!filteredRows.length) return;
+  const csv=["일자,결제금액,상품명,할인금액",
+    ...filteredRows.map(r=>`${r.displayDate},${r.amount.toFixed(2)},"${r.product.replace(/"/g,'""')}",${r.discount.toFixed(2)}`)].join("\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  const today=new Date();
+  a.download=`할인계산_결과_${today.getFullYear()}${dd(today.getMonth()+1)}${dd(today.getDate())}.csv`;
+  a.click();
+});
+</script>
+</body>
+</html>
