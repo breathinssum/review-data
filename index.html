@@ -1,182 +1,78 @@
+<!-- login.html -->
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>단어 반복 횟수 카운터</title>
-  <style>
-    *{box-sizing:border-box}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Malgun Gothic,sans-serif;margin:0;background:#0b0c10;color:#e6e6e6}
-    header{position:sticky;top:0;background:#0b0c10;border-bottom:1px solid #1f2833;padding:16px 20px;z-index:10}
-    h1{margin:0;font-size:18px}
-    main{max-width:1000px;margin:24px auto;padding:0 16px 80px}
-    .card{background:#111319;border:1px solid #1f2833;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);overflow:hidden}
-    .row{display:flex;flex-wrap:wrap;gap:16px}
-    textarea{width:100%;min-height:220px;background:#0e1016;color:#e6e6e6;border:1px solid #2b3442;border-radius:12px;padding:14px 16px;resize:vertical;font-size:14px}
-    .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px}
-    .controls > *{margin-right:8px}
-    input[type="number"],input[type="text"]{background:#0e1016;color:#e6e6e6;border:1px solid #2b3442;border-radius:10px;padding:8px 10px}
-    label{font-size:13px;opacity:.9}
-    button{background:#14b8a6;border:none;color:#00110f;font-weight:700;padding:10px 14px;border-radius:12px;cursor:pointer}
-    button.secondary{background:#293241;color:#d9e3ea}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    table{width:100%;border-collapse:collapse;margin-top:16px}
-    th,td{border-bottom:1px solid #222a36;padding:10px 12px;text-align:left}
-    th{position:sticky;top:0;background:#0b0c10}
-    .muted{opacity:.7}
-    .pill{display:inline-block;background:#1f2833;color:#9bd2ca;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid #28404b}
-    .flex{display:flex;gap:8px;align-items:center;justify-content:space-between}
-  </style>
+	<meta charset="UTF-8">
+	<title>로그인</title>
+	<link rel="stylesheet" href="style.css">
 </head>
+
+<style>
+	body {
+		background: #0B0C10;
+	}
+	.login-box {
+		width: 300px;
+		text-align: center;
+		margin: 100px auto;
+		padding: 30px;
+		background-color: #111319;
+		color: #fff;
+		border: 3px solid #1F2833;
+		border-radius: 8px;
+		box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+	}
+
+	.login-box input {
+		width: 275px;
+		padding: 10px;
+		margin: 10px 0;
+		background: #0E1016;
+		color: #fff;
+		border: 3px solid #1F2833;
+		border-radius: 8px;
+	}
+
+	.login-box button {
+		width: 100%;
+		margin: 10px 0 0;
+		padding: 10px;
+		background-color: #0078D7;
+		color: white;
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+</style>
+
 <body>
- <header>
-  <h1>단어 반복 추출기</h1>
-  <nav style="margin-top:6px;">
-    <a href="image-review-viewer.html" style="color:var(--accent);text-decoration:none;font-size:14px;">이미지 뷰어 사이트로 가기</a><br>
-    <a href="discount.html" style="color:var(--accent);text-decoration:none;font-size:14px;">캐시백 조회 사이트로 가기</a>
-  </nav>
-</header>
-  <main>
-    <div class="card" style="padding:16px">
-      <div class="row">
-        <div style="flex:1 1 600px;min-width:280px">
-          <label for="input">텍스트 입력</label>
-          <textarea id="input" placeholder="여기에 텍스트를 붙여 넣으세요. (한글/영문 모두 지원)"></textarea>
+	<div class="login-box">
+		<h2>로그인</h2>
+		<input type="text" id="username" placeholder="아이디">
+		<input type="password" id="password" placeholder="비밀번호">
+		<button onclick="validateLogin()">로그인</button>
+		<p id="error"></p>
+	</div>
 
-          <div class="controls">
-            <label><input type="checkbox" id="caseSensitive"> 대소문자 구분</label>
-            <label><input type="checkbox" id="keepNumbers"> 숫자 포함</label>
-            <label><input type="checkbox" id="removeStop"> 불용어 제거</label>
-            <label>최소 글자수 <input type="number" id="minLen" min="1" value="1" style="width:64px"></label>
-            <label>추가 필터(쉼표로 구분, 제외할 단어) <input type="text" id="extraStop" placeholder="예: the,그리고,하지만" style="min-width:220px"></label>
-            <button id="run">실행</button>
-          </div>
-        </div>
-        <div style="flex:1 1 320px;min-width:260px">
-          <div class="flex">
-            <div>
-              <span class="pill" id="totalWords">총 단어: 0</span>
-              <span class="pill" id="uniqueWords">고유 단어: 0</span>
-            </div>
-            <div>
-              <button class="secondary" id="copyCsv" disabled>CSV 복사</button>
-              <button class="secondary" id="downloadCsv" disabled>CSV 다운로드</button>
-            </div>
-          </div>
-          <div style="max-height:420px;overflow:auto;border:1px solid #1f2833;border-radius:12px;margin-top:12px">
-            <table id="result">
-              <thead>
-                <tr><th style="width:60%">단어</th><th style="width:40%">횟수</th></tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <p class="muted" style="font-size:12px;margin-top:8px">· 유니코드 지원 토크나이저로 한글/영문을 공백·구두점과 무관하게 분리합니다. 필요 시 대소문자/숫자/불용어 필터를 조정하세요.</p>
-        </div>
-      </div>
-    </div>
-  </main>
+	<script>
+		function validateLogin() {
+			const id = document.getElementById("username").value;
+			const pw = document.getElementById("password").value;
+			const error = document.getElementById("error");
 
-  <script>
-    // 간단한 한국어·영문 겸용 토크나이저 (Unicode property escapes)
-    // 최신 브라우저에서 지원됨. 미지원 환경에서는 공백 분리로 fallback.
-    function tokenize(text){
-      try{
-        const tokens = text.match(/[\p{L}][\p{L}\p{M}\p{N}_'-]*|[\p{N}]+/gu); // 단어/숫자
-        return tokens || [];
-      }catch(e){
-        // fallback: 공백 기반
-        return (text||'').split(/\s+/).filter(Boolean);
-      }
-    }
+			const validId = "admin";
+			const validPw = "1234";
 
-    const koStop = new Set(['그리고','그러나','하지만','또는','또','또한','이미','아주','매우','정말','너무','좀','그','이','저','것','등','수','등등','및','에서','으로','에게','에는','에는','에는','하다','했다','되어','되는','했다','한다']);
-    const enStop = new Set(['a','an','the','and','or','but','so','to','of','in','on','for','as','is','are','was','were','be','been','being','at','by','with','from','that','this','it','its','into','about','over','after','before']);
+			if (id === validId && pw === validPw) {
+				// 로그인 성공 시 다른 페이지로 이동
+				window.location.href = "word-count.html"; // 예: 메인 페이지
+			} else {
+				error.style.color = "red";
+				error.textContent = "아이디 또는 비밀번호가 틀렸습니다.";
+			}
+		}
+	</script>
+</body>
 
-    function countFreq(text,{caseSensitive=false,keepNumbers=false,removeStop=false,minLen=1,extraStopStr=''}={}){
-      const extraStops = new Set((extraStopStr||'').split(',').map(s=>s.trim()).filter(Boolean));
-      let tokens = tokenize(text);
-      if(!caseSensitive){ tokens = tokens.map(t=>t.toLowerCase()); }
-      const freq = new Map();
-      for(const raw of tokens){
-        const t = raw.normalize('NFKC');
-        const isNum = /^\p{N}+$/u.test(t);
-        if(!keepNumbers && isNum) continue;
-        if(t.length < minLen) continue;
-        if(removeStop){
-          if(!caseSensitive && (koStop.has(t) || enStop.has(t))) continue;
-        }
-        if(extraStops.has(t)) continue;
-        freq.set(t, (freq.get(t)||0) + 1);
-      }
-      // 정렬: 횟수 desc, 단어 asc
-      const entries = [...freq.entries()].sort((a,b)=> b[1]-a[1] || (a[0] > b[0] ? 1 : -1));
-      return {entries, total: tokens.length, unique: freq.size};
-    }
-
-    const $ = sel => document.querySelector(sel);
-    const $$ = sel => document.querySelectorAll(sel);
-
-    function render(entries){
-      const tbody = $('#result tbody');
-      tbody.innerHTML = entries.map(([w,c])=>`<tr><td>${escapeHtml(w)}</td><td>${c}</td></tr>`).join('');
-      $('#copyCsv').disabled = entries.length===0;
-      $('#downloadCsv').disabled = entries.length===0;
-    }
-
-    function escapeHtml(s){
-      return s.replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
-    }
-
-    function toCSV(entries){
-      const header = 'word,count\n';
-      const lines = entries.map(([w,c])=>`"${w.replace(/"/g,'""')}",${c}`).join('\n');
-      return header + lines;
-    }
-
-    function download(filename, text){
-      const blob = new Blob([text], {type:'text/csv;charset=utf-8;'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    function run(){
-      const text = $('#input').value || '';
-      const options = {
-        caseSensitive: $('#caseSensitive').checked,
-        keepNumbers: $('#keepNumbers').checked,
-        removeStop: $('#removeStop').checked,
-        minLen: parseInt($('#minLen').value||'1',10),
-        extraStopStr: $('#extraStop').value || ''
-      };
-      const {entries,total,unique} = countFreq(text, options);
-      $('#totalWords').textContent = `총 단어: ${total}`;
-      $('#uniqueWords').textContent = `고유 단어: ${unique}`;
-      render(entries);
-      // store for CSV
-      window.__freqEntries = entries;
-    }
-
-    $('#run').addEventListener('click', run);
-    $('#copyCsv').addEventListener('click', ()=>{
-      if(!window.__freqEntries) return;
-      const csv = toCSV(window.__freqEntries);
-      navigator.clipboard.writeText(csv).then(()=>{
-        $('#copyCsv').textContent = '복사됨!';
-        setTimeout(()=> $('#copyCsv').textContent = 'CSV 복사', 900);
-      });
-    });
-    $('#downloadCsv').addEventListener('click', ()=>{
-      if(!window.__freqEntries) return;
-      const csv = toCSV(window.__freqEntries);
-      download('word_frequency.csv', csv);
-    });
-
-    // Ctrl/Cmd+Enter로 실행
-    document.addEventListener('keydown', (e)=>{
-      if((e.ctrlKey || e.metaKey) && e.key === 'Enter') run();
-    });
-  </script>
-</body> 
 </html>
