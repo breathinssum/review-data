@@ -34,7 +34,6 @@
 			return;
 		}
 
-		// ⭐⭐⭐ 도서산간 우편번호 목록 (여기에 네가 제공한 우편번호들만 넣으면 됨)
 		const islandZipList = [
 			15654, 23008, 23009, 23010, 23100, 23101, 23102, 23103, 23104, 23105,
 			23106, 23107, 23108, 23109, 23110, 23111, 23112, 23113, 23114, 23115,
@@ -120,8 +119,10 @@
 
 			let json = XLSX.utils.sheet_to_json(sheet);
 
-			// 1. 우편번호 열 자동 탐색
+			/* 🔍 1. 우편번호 열 자동 탐색 */
 			const targetZipKeywords = ["우편", "zipcode", "postal", "zip"];
+			const targetAddressKeywords = ["주소", "address", "addr"];
+
 			const columns = Object.keys(json[0]);
 
 			let zipKey = columns.find(col =>
@@ -130,24 +131,45 @@
 				)
 			);
 
+			let addressKey = columns.find(col =>
+				targetAddressKeywords.some(keyword =>
+					col.toLowerCase().includes(keyword.toLowerCase())
+				)
+			);
+
 			if (!zipKey) {
 				alert("우편번호 열을 찾을 수 없습니다.");
 				return;
 			}
+			if (!addressKey) {
+				alert("주소 열을 찾을 수 없습니다.");
+				return;
+			}
 
-			// 2. 우편번호 비교 후 도서산간 여부 판별
+			/* 🔍 2. 도서산간 / 제주 배송비 계산 */
 			json = json.map(row => {
-				const zip = String(row[zipKey]).replace(/[^0-9]/g, ""); // 숫자만 추출
-
+				const zip = String(row[zipKey]).replace(/[^0-9]/g, "");
+				const address = String(row[addressKey]);
+				
 				const isIsland = islandZipList.includes(Number(zip));
+				const isJeju = address.includes("제주");
+
+				let shippingPrice = "";
+
+				if (isJeju) {
+					shippingPrice = "+3000원";
+				} else if (isIsland) {
+					shippingPrice = "+5000원";
+				}
 
 				return {
 					...row,
-					"비고": isIsland ? "도서산간지역" : ""
+					"비고": isIsland ? "도서산간지역" : "",
+					"배송비": shippingPrice
 				};
 			});
 
-			// 3. 엑셀 변환 및 다운로드
+			/* 🔻 3. 엑셀 변환 */
 			const newSheet = XLSX.utils.json_to_sheet(json);
 			const newWb = XLSX.utils.book_new();
 			XLSX.utils.book_append_sheet(newWb, newSheet, "결과");
