@@ -662,10 +662,48 @@
 
       // 6) 전화번호 체크
       const c6 = document.createElement('div');
-      const cbPhone = document.createElement('input'); cbPhone.type = 'checkbox'; cbPhone.checked = !!r.phoneFlag;
-      cbPhone.title = r.phone ? `전화: ${r.phone}` : '전화번호 없음';
-      cbPhone.addEventListener('change', () => { r.phoneFlag = cbPhone.checked; });
-      c6.appendChild(cbPhone); row.appendChild(c6);
+      const cbPhone = document.createElement('input');
+      cbPhone.type = 'checkbox';
+
+      // -----------------------------
+      // 전화번호 검사 + 정제 함수
+      // -----------------------------
+      function cleanPhoneNumber(raw) {
+        if (!raw) return { valid: false, cleaned: '' };
+
+        let cleaned = raw.replace(/[\s\-.]/g, '');
+
+        if (!/^\d+$/.test(cleaned)) {
+          return { valid: false, cleaned: raw };
+        }
+        if (cleaned.startsWith("010")) {
+          cleaned = "82" + cleaned.substring(1);
+        }
+        return { valid: true, cleaned };
+      }
+
+      // 검사 실행
+      const phoneCheck = cleanPhoneNumber(r.phone);
+
+      // 체크박스 기본 체크 상태
+      cbPhone.checked = !phoneCheck.valid ? false : !!r.phoneFlag;
+
+      // title 표시
+      cbPhone.title = !phoneCheck.valid
+        ? `전화번호 이상함: ${r.phone}`
+        : `전화: ${phoneCheck.cleaned}`;
+
+      // 전화번호 업데이트
+      r.cleanedPhone = phoneCheck.cleaned;
+
+      // 체크박스 변경 시 flag 업데이트
+      cbPhone.addEventListener('change', () => {
+        r.phoneFlag = cbPhone.checked;
+      });
+
+      c6.appendChild(cbPhone);
+      row.appendChild(c6);
+
 
       // 7) 체크
       const c7 = document.createElement('div');
