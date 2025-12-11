@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>전화번호 정제 프로그램</title>
+    <link rel="stylesheet" href="phoneNumber.css">
+    <!-- xlsx 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+
+<body>
+    <div class="header">
+		<div class="title">전화번호 정제</div>
+		<div class="nav">
+			<a href="word-count.html">단어 추출 사이트</a>
+			<a href="image-review-viewer.html">이미지 뷰어 사이트</a>
+			<a href="discount.html">캐시백 조회 사이트</a>
+            <a href="address.html">주소지 추출 사이트</a>
+		</div>
+	</div>
+
+    <div class="mid">
+		<input type="file" id="excelFile" class="custom-file-btn" accept=".xlsx, .xls" />
+		<button id="processBtn">정제 시작</button>
+	</div>
+
+    <div class="result-wrap">
+        <p id="statusMsg"></p>
+    </div>
+
+    <script>
+        document.getElementById("excelFile").addEventListener("change", handleFile);
+
+        function handleFile(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function (evt) {
+                const data = evt.target.result;
+                const workbook = XLSX.read(data, { type: "binary" });
+
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+
+                const json = XLSX.utils.sheet_to_json(sheet);
+
+                const cleaned = json.map((row) => {
+                    // 'OrderNumber'가 포함된 열 이름 자동 탐색
+                    const orderNumberKey = Object.keys(row).find(key =>
+                        key.toLowerCase().includes("ordernumber")
+                    );
+
+                    // 탐색된 열을 phone으로 사용
+                    let phone = row.phone || (orderNumberKey ? row[orderNumberKey] : "") || "";
+                    let remark = row.remark || row["비고"] || "";
+
+                    if (!phone) {
+                        remark = appendRemark(remark, "전화번호 없음");
+                        return { ...row, remark };
+                    }
+
+                    // 1. 일단 허용되는 구분자('-', '.', 공백 등) 제거
+                    let cleanedPhone = phone.replace(/[-.\s]/g, "");
+
+                    // 2. 숫자 외 문자가 있으면 오류 체크
+                    if (/[^0-9]/.test(cleanedPhone)) {
+                        remark = appendRemark(remark, "전화번호 이상");
+                    }
+
+                    // 3. 자리수 체크 (한국 표준 10~11자리)
+                    if (cleanedPhone.length < 10 || cleanedPhone.length > 11) {
+                        remark = appendRemark(remark, "전화번호 자리수 이상");
+                    }
+
+                    // 4. 정상일 경우 010 → 8210 변경
+                    if (cleanedPhone.startsWith("010") && cleanedPhone.length === 11) {
+                        cleanedPhone = "8210" + cleanedPhone.slice(3);
+                    }
+
+                    return {
+                        ...row,
+                        phone: cleanedPhone,
+                        remark,
+                    };
+                });
+
+                // 새 엑셀파일로 다운로드
+                const newSheet = XLSX.utils.json_to_sheet(cleaned);
+                const newBook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(newBook, newSheet, "정제결과");
+
+                XLSX.writeFile(newBook, "정제된_전화번호.xlsx");
+            };
+
+            reader.readAsBinaryString(file);
+        }
+
+        // 비고항목 누적 함수
+        function appendRemark(current, msg) {
+            if (!current) return msg;
+            if (current.includes(msg)) return current; // 중복 방지
+            return current + ", " + msg;
+        }
+
+    </script>
+</body>
+
+</html>
