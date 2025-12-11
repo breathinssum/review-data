@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <title>이미지 리뷰 시스템</title>
+    <link rel="stylesheet" href="img2.css">
+</head>
+
+<body>
+    <div class="header">
+        <div class="title">리뷰 이미지 뷰어</div>
+        <div class="nav">
+            <a href="word-count.html">단어 추출 사이트</a>
+            <a href="phoneNumber.html">전화번호 정제 사이트</a>
+            <a href="discount.html">캐시백 조회 사이트</a>
+            <a href="address.html">주소지 추출 사이트</a>
+        </div>
+    </div>
+
+    <main>
+
+        <div class="upload-box">
+            <label for="file" class="file-label">엑셀 파일 업로드</label>
+            <input type="file" id="file" accept=".xlsx, .xls">
+            <button id="exportBtn" class="btn">엑셀로 내보내기</button>
+        </div>
+
+        <div id="imageContainer"></div>
+
+        <div class="pagination">
+            <button id="prevBtn" class="page-btn">이전</button>
+            <span id="pageInfo"></span>
+            <button id="nextBtn" class="page-btn">다음</button>
+        </div>
+
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="script.js"></script>
+    <script>
+        /* script.js
+       이미지 리뷰 사이트 기능 스크립트
+       - 엑셀 업로드 (.xls/.xlsx)
+       - "review"가 포함된 헤더 컬럼과 "photo"가 포함된 헤더 컬럼(첫번째)을 찾아 처리
+       - photo 컬럼의 값은 쉼표로 분리된 이미지 URL들 -> 앞에 1개만 150x150으로 표시
+       - 사진 개수 5개 이상이면 '마음에 듦' 자동 체크
+       - 각 아이템마다 '마음에 듦' / '마음에 안 듦' 체크박스 (수동 변경 가능)
+       - 페이지당 100개, 이전/다음 페이지 버튼
+       - 결과를 엑셀로 내보내기 (원본 열 + '마음에 듦' / '마음에 안 듦' 열 추가)
+       요구된 HTML 파일에 아래 스크립트가 포함되어 있다고 가정합니다.
+    */
+
+        (() => {
+            const fileInput = document.getElementById('file');
+            const imageContainer = document.getElementById('imageContainer');
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const pageInfo = document.getElementById('pageInfo');
+            const exportBtn = document.getElementById('exportBtn');
+
+            const PER_PAGE = 100;
+            let items = []; // { orig: {...}, reviewKey: '', photoKey: '', photos: [], like: bool, dislike: bool }
+            let currentPage = 1;
+            let totalPages = 1;
+            let reviewHeader = null;
+            let photoHeader = null;
+
+            // 유틸: 문자열 포함 검사 (대소문자 무시)
+            const hasSubstr = (str = '', sub) => str.toLowerCase().includes(sub.toLowerCase());
+
+            // 엑셀 파일 읽기
+            fileInput.addEventListener('change', async (e) => {
+                const f = e.target.files[0];
+                if (!f) return;
+                const arrayBuffer = await f.arrayBuffer();
+                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[firstSheetName];
+
+                // 모든 행을 객체 배열로 읽기 (헤더 사용)
+                const raw = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+                if (!raw.length) {
+                    alert('엑셀에 데이터가 없습니다.');
+                    return;
+                }
+
+                // 헤더 탐색: 첫 행의 키들로 판단
+                const headers = Object.keys(raw[0] || {});
+                // review 헤더: 'review' 또는 'review id' 등 포함
+                reviewHeader = headers.find(h => hasSubstr(h, 'review')) || headers.find(h => hasSubstr(h, 'review id')) || null;
+                // photo 헤더: 'photo'라는 단어가 포함된 컬럼 (첫번째)
+                photoHeader = headers.find(h => hasSubstr(h, 'photo')) || null;
+
+                if (!reviewHeader || !photoHeader) {
+                    // 좀 더 관대하게 찾기 (예: 'image' 포함 가능성)
+                    if (!reviewHeader) reviewHeader = headers.find(h => hasSubstr(h, 'id')) || null;
+                    if (!photoHeader) photoHeader = headers.find(h => hasSubstr(h, 'image')) || null;
+                }
+
+                if (!reviewHeader || !photoHeader) {
+                    const msg = [
+                        `필요한 열을 찾지 못했습니다.`,
+                        `현재 시도: reviewHeader="${reviewHeader}" photoHeader="${photoHeader}".`,
+                        `엑셀의 헤더에 'review' 와 'photo' (또는 image) 가 포함되어 있는지 확인해주세요.`
+                    ].join('\n');
+                    alert(msg);
+                    return;
+                }
+
+                // items 생성
+                items = raw.map(row => {
+                    const photoCell = (row[photoHeader] + '').trim();
+                    // 쉼표로 분리하되, 공백 정리
+                    const photos = photoCell === '' ? [] : photoCell.split(',').map(s => s.trim()).filter(Boolean);
+                    const likeAuto = photos.length >= 5; // 자동 체크 조건
+                    return {
+                        orig: row,
+                        reviewValue: row[reviewHeader] !== undefined ? row[reviewHeader] : '',
+                        photos,
+                        like: likeAuto,
+                        dislike: false
+                    };
+                });
+
+                // 페이지 설정
+                currentPage = 1;
+                totalPages = Math.max(1, Math.ceil(items.length / PER_PAGE));
+                renderPage();
+            });
+
+            // 페이지 렌더링
+            function renderPage() {
+                imageContainer.innerHTML = '';
+                if (!items.length) {
+                    imageContainer.innerHTML = `<div class="empty">업로드된 이미지가 없습니다. 엑셀 파일을 업로드해주세요.</div>`;
+                    pageInfo.textContent = '';
+                    prevBtn.disabled = true;
+                    nextBtn.disabled = true;
+                    return;
+                }
+
+                totalPages = Math.max(1, Math.ceil(items.length / PER_PAGE));
+                if (currentPage < 1) currentPage = 1;
+                if (currentPage > totalPages) currentPage = totalPages;
+
+                const start = (currentPage - 1) * PER_PAGE;
+                const slice = items.slice(start, start + PER_PAGE);
+
+                slice.forEach((item, idx) => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+
+                    const preview = document.createElement('div');
+                    preview.className = 'preview';
+                    const img = document.createElement('img');
+                    // 앞의 이미지 하나만 사용 (없으면 빈박스)
+                    if (item.photos.length > 0) {
+                        img.src = item.photos[0];
+                        img.alt = item.reviewValue + ' preview';
+                        // 이미지 로드 실패시 대비: 깔끔하게 숨기거나 대체 텍스트 처리
+                        img.onerror = () => {
+                            img.style.objectFit = 'contain';
+                            img.src = ''; // 빈으로 바꿈 - 배경색으로 대체
+                            img.alt = '이미지 로드 실패';
+                        };
+                    } else {
+                        // 빈 이미지 요소로 남겨두면 배경색이 보임
+                        img.alt = '이미지 없음';
+                        img.src = '';
+                    }
+                    preview.appendChild(img);
+
+                    const idLine = document.createElement('div');
+                    idLine.className = 'small';
+                    idLine.style.marginTop = '6px';
+                    idLine.textContent = `${item.reviewValue}`;
+
+                    const countLine = document.createElement('div');
+                    countLine.className = 'small';
+                    countLine.style.color = '#6b7280';
+                    countLine.textContent = `이미지 ${item.photos.length}개`;
+
+                    const checkArea = document.createElement('div');
+                    checkArea.className = 'check-area';
+
+                    // 마음에 듦 체크박스
+                    const likeLabel = document.createElement('label');
+                    likeLabel.style.display = 'flex';
+                    likeLabel.style.alignItems = 'center';
+                    likeLabel.style.gap = '6px';
+                    const likeCb = document.createElement('input');
+                    likeCb.type = 'checkbox';
+                    likeCb.checked = !!item.like;
+                    likeCb.dataset.idx = start + idx;
+                    const likeText = document.createElement('span');
+                    likeText.textContent = '마음에 듦';
+                    likeLabel.appendChild(likeCb);
+                    likeLabel.appendChild(likeText);
+
+                    // 마음에 안 듦 체크박스
+                    const dislikeLabel = document.createElement('label');
+                    dislikeLabel.style.display = 'flex';
+                    dislikeLabel.style.alignItems = 'center';
+                    dislikeLabel.style.gap = '6px';
+                    const dislikeCb = document.createElement('input');
+                    dislikeCb.type = 'checkbox';
+                    dislikeCb.checked = !!item.dislike;
+                    dislikeCb.dataset.idx = start + idx;
+                    const dislikeText = document.createElement('span');
+                    dislikeText.textContent = '마음에 안 듦';
+                    dislikeLabel.appendChild(dislikeCb);
+                    dislikeLabel.appendChild(dislikeText);
+
+                    // 체크박스 상호작용: 하나만 체크하거나 둘다 허용? (요청은 단순 체크 가능한 칸 2개)
+                    // 여기서는 사용자가 둘 다 체크 가능하되, UX상 둘 중 하나만 남기고 싶으면 코드 추가 필요.
+                    likeCb.addEventListener('change', (ev) => {
+                        const i = Number(ev.target.dataset.idx);
+                        items[i].like = ev.target.checked;
+                        // 만약 like가 체크되면 dislike를 자동 해제하고 싶으면 아래 주석 해제
+                        // if (items[i].like) { items[i].dislike = false; /* 그리고 화면 업데이트 필요 */ }
+                    });
+
+                    dislikeCb.addEventListener('change', (ev) => {
+                        const i = Number(ev.target.dataset.idx);
+                        items[i].dislike = ev.target.checked;
+                    });
+
+                    checkArea.appendChild(likeLabel);
+                    checkArea.appendChild(dislikeLabel);
+
+                    card.appendChild(preview);
+                    card.appendChild(idLine);
+                    card.appendChild(countLine);
+                    card.appendChild(checkArea);
+                    imageContainer.appendChild(card);
+                });
+
+                // 페이지 정보 & 버튼 상태
+                pageInfo.textContent = `페이지 ${currentPage} / ${totalPages} (총 ${items.length}개)`;
+                prevBtn.disabled = currentPage <= 1;
+                nextBtn.disabled = currentPage >= totalPages;
+            }
+
+            prevBtn.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderPage();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            });
+
+            nextBtn.addEventListener('click', () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderPage();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            });
+
+            // 내보내기: 원본 열 + '마음에 듦' / '마음에 안 듦' 추가
+            exportBtn.addEventListener('click', () => {
+                if (!items.length) {
+                    alert('내보낼 데이터가 없습니다.');
+                    return;
+                }
+
+                // exportRows: Object 배열. 원본 열 유지 (orig), 그리고 두 열 추가
+                const exportRows = items.map(it => {
+                    // 복사해서 안전하게 다루기
+                    const row = { ...it.orig };
+                    // 컬럼 이름 충돌을 피하기 위해 한국어 컬럼명 사용
+                    row['마음에 듦'] = it.like ? 'TRUE' : '';
+                    row['마음에 안 듦'] = it.dislike ? 'TRUE' : '';
+                    // 만약 photo 열도 같이 내보내고 싶다면 이미 orig에 포함되어 있음
+                    return row;
+                });
+
+                const ws = XLSX.utils.json_to_sheet(exportRows);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'review_export');
+                const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+
+                const blob = new Blob([wbout], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const now = new Date();
+                const filename = `image_review_export_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}.xlsx`;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            });
+
+            // 초기 상태
+            renderPage();
+
+        })();
+    </script>
+
+</body>
+
+</html>
